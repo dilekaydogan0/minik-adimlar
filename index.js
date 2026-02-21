@@ -130,7 +130,8 @@ app.get('/panel', async (req, res) => {
   let htmlIn = ''; let htmlOut = ''; let countIn = 0; let countOut = 0;
   
   ogrenciler.rows.forEach(o => {
-      const zaman = o.son_islem_saati ? new Date(o.son_islem_saati).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'}) : '--:--';
+      // SAAT DİLİMİ BURADA EKLENDİ
+      const zaman = o.son_islem_saati ? new Date(o.son_islem_saati).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit', timeZone: 'Europe/Istanbul'}) : '--:--';
       const foto = o.profil_resmi_url ? '/uploads/' + o.profil_resmi_url : 'https://via.placeholder.com/70';
       const kart = `<div class="card" data-isim="${o.ad_soyad.toLowerCase()}"><a href="/ogrenci-detay/${o.id}" style="display:flex; align-items:center; gap:15px; flex:1; text-decoration:none; color:inherit;"><img src="${foto}" style="width:70px; height:70px; border-radius:20px; object-fit:cover;"><div><strong>${o.ad_soyad}</strong><br><small>🕒 ${zaman}</small></div></a><button onclick="tg(${o.id})" class="btn-s ${o.su_an_okulda ? 'btn-in' : 'btn-out'}">${o.su_an_okulda ? 'Çıkış' : 'Giriş'}</button></div>`;
       if(o.su_an_okulda) { htmlIn += kart; countIn++; } else { htmlOut += kart; countOut++; }
@@ -220,7 +221,8 @@ app.get('/ogrenci-detay/:id', async (req, res) => {
           const saatFarki = Math.floor(toplamDk / 60); const dkFarki = toplamDk % 60;
           if (saatFarki > 0 && dkFarki > 0) sure = `${saatFarki} sa ${dkFarki} dk`; else if (saatFarki > 0) sure = `${saatFarki} sa`; else sure = `${dkFarki} dk`;
       }
-      tabloHTML += `<tr><td>${new Date(x.tarih).toLocaleDateString('tr-TR')}</td><td>${g}</td><td>${c}</td><td><strong>${sure}</strong></td></tr>`;
+      // SAAT DİLİMİ BURADA EKLENDİ
+      tabloHTML += `<tr><td>${new Date(x.tarih).toLocaleDateString('tr-TR', {timeZone: 'Europe/Istanbul'})}</td><td>${g}</td><td>${c}</td><td><strong>${sure}</strong></td></tr>`;
   });
   const resim = o.profil_resmi_url ? '/uploads/' + o.profil_resmi_url : 'https://via.placeholder.com/180';
   res.send(`
