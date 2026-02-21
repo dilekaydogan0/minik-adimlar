@@ -292,12 +292,18 @@ app.post('/ogrenci-guncelle/:id', upload.single('foto'), async (req, res) => {
 app.delete('/ogrenci-sil/:id', async (req, res) => { await pool.query('DELETE FROM ogrenciler WHERE id = $1', [req.params.id]); res.json({ success: true }); });
 
 app.post('/durum-degistir/:id', async (req, res) => {
-    const r = await pool.query('SELECT su_an_okulda FROM ogrenciler WHERE id = $1', [req.params.id]);
-    const yeni = !r.rows[0].su_an_okulda;
-    await pool.query('UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = NOW() WHERE id = $2', [yeni, req.params.id]);
-    if (yeni) await pool.query('INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, CURRENT_DATE, CURRENT_TIME)', [req.params.id]);
-    else await pool.query('UPDATE hareket_kayitlari SET cikis_saati = CURRENT_TIME WHERE ogrenci_id = $1 AND tarih = CURRENT_DATE AND cikis_saati IS NULL', [req.params.id]);
-    res.json({ success: true });
+  const r = await pool.query('SELECT su_an_okulda FROM ogrenciler WHERE id = $1', [req.params.id]);
+  const yeni = !r.rows[0].su_an_okulda;
+  
+  // NOW() yerine Türkiye saatini (UTC+3) baz alan AT TIME ZONE kullandım
+  await pool.query("UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' WHERE id = $2", [yeni, req.params.id]);
+  
+  if (yeni) {
+      await pool.query("INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::time)", [req.params.id]);
+  } else {
+      await pool.query("UPDATE hareket_kayitlari SET cikis_saati = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::time WHERE ogrenci_id = $1 AND tarih = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::date AND cikis_saati IS NULL", [req.params.id]);
+  }
+  res.json({ success: true });
 });
 
 app.post('/upload-photo/:id', upload.single('foto'), async (req, res) => {
