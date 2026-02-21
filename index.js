@@ -297,13 +297,19 @@ app.post('/durum-degistir/:id', async (req, res) => {
   const r = await pool.query('SELECT su_an_okulda FROM ogrenciler WHERE id = $1', [req.params.id]);
   const yeni = !r.rows[0].su_an_okulda;
   
-  // JS tarafında Türkiye saatini oluşturuyoruz
-  const trSaat = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Istanbul' });
-  const trTarih = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' }); // YYYY-MM-DD formatı
-
-  // Veritabanına doğrudan bu değişkenleri gönderiyoruz
-  await pool.query('UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' AT TIME ZONE \'Europe/Istanbul\' WHERE id = $2', [yeni, req.params.id]);
+  // 1. Türkiye saat ve tarihini JS tarafında oluşturuyoruz
+  const options = { timeZone: 'Europe/Istanbul' };
+  const trDateObj = new Date(new Date().toLocaleString('en-US', options));
   
+  const trSaat = trDateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); // "HH:mm"
+  const trTarih = trDateObj.toLocaleDateString('en-CA'); // "YYYY-MM-DD"
+
+  // 2. Ogrenciler tablosunda son_islem_saati'ne direkt bu TR objesini gönderiyoruz
+  // Böylece SQL'in kendi saat dilimiyle uğraşmasına gerek kalmıyor.
+  await pool.query('UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = $2 WHERE id = $3', 
+    [yeni, trDateObj, req.params.id]);
+  
+  // 3. Hareket kayıtlarını işle
   if (yeni) {
       await pool.query('INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, $2, $3)', 
       [req.params.id, trTarih, trSaat]);
@@ -313,7 +319,6 @@ app.post('/durum-degistir/:id', async (req, res) => {
   }
   res.json({ success: true });
 });
-
 app.post('/upload-photo/:id', upload.single('foto'), async (req, res) => {
     await pool.query('UPDATE ogrenciler SET profil_resmi_url = $1 WHERE id = $2', [req.file.filename, req.params.id]);
     res.json({ success: true });
