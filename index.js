@@ -295,13 +295,19 @@ app.post('/durum-degistir/:id', async (req, res) => {
   const r = await pool.query('SELECT su_an_okulda FROM ogrenciler WHERE id = $1', [req.params.id]);
   const yeni = !r.rows[0].su_an_okulda;
   
-  // NOW() yerine Türkiye saatini (UTC+3) baz alan AT TIME ZONE kullandım
-  await pool.query("UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Istanbul' WHERE id = $2", [yeni, req.params.id]);
+  // JS tarafında Türkiye saatini oluşturuyoruz
+  const trSaat = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Istanbul' });
+  const trTarih = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' }); // YYYY-MM-DD formatı
+
+  // Veritabanına doğrudan bu değişkenleri gönderiyoruz
+  await pool.query('UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = CURRENT_TIMESTAMP AT TIME ZONE \'UTC\' AT TIME ZONE \'Europe/Istanbul\' WHERE id = $2', [yeni, req.params.id]);
   
   if (yeni) {
-      await pool.query("INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::date, (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::time)", [req.params.id]);
+      await pool.query('INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, $2, $3)', 
+      [req.params.id, trTarih, trSaat]);
   } else {
-      await pool.query("UPDATE hareket_kayitlari SET cikis_saati = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::time WHERE ogrenci_id = $1 AND tarih = (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Istanbul')::date AND cikis_saati IS NULL", [req.params.id]);
+      await pool.query('UPDATE hareket_kayitlari SET cikis_saati = $1 WHERE ogrenci_id = $2 AND tarih = $3 AND cikis_saati IS NULL', 
+      [trSaat, req.params.id, trTarih]);
   }
   res.json({ success: true });
 });
