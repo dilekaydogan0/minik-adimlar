@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,6 +21,7 @@ const pool = new Pool({
     await pool.query(`
       ALTER TABLE ogrenciler 
       ADD COLUMN IF NOT EXISTS tc_no VARCHAR(11),
+      ADD COLUMN IF NOT EXISTS veli_ad_soyad VARCHAR(100),
       ADD COLUMN IF NOT EXISTS yedek_veli_ad_soyad VARCHAR(100),
       ADD COLUMN IF NOT EXISTS veli_tel VARCHAR(20),
       ADD COLUMN IF NOT EXISTS yedek_veli_tel VARCHAR(20),
@@ -27,7 +29,8 @@ const pool = new Pool({
       ADD COLUMN IF NOT EXISTS ilaclar TEXT,
       ADD COLUMN IF NOT EXISTS ozel_durum TEXT,
       ADD COLUMN IF NOT EXISTS su_an_okulda BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS son_islem_saati TIMESTAMP;
+      ADD COLUMN IF NOT EXISTS son_islem_saati TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS saatlik_ucret NUMERIC DEFAULT 0;
     `);
   } catch (e) { console.log("✅ Veritabanı sütunları hazır."); }
 })();
@@ -48,7 +51,7 @@ app.use('/uploads', express.static(uploadDir));
 
 // --- ROTALAR ---
 
-// ANA SAYFA (Renkli Arka Plan ve Carousel Geri Geldi)
+// ANA SAYFA
 app.get('/', (req, res) => {
   res.send(`
     <html>
@@ -98,7 +101,7 @@ app.get('/', (req, res) => {
   `);
 });
 
-// GİRİŞ SAYFASI (Hatalı Giriş Görseliyle Birlikte)
+// GİRİŞ SAYFASI
 app.get('/login-page', (req, res) => {
   res.send(`
     <html><head><link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
@@ -124,13 +127,12 @@ app.post('/login', async (req, res) => {
   res.redirect('/panel'); 
 });
 
-// ÖĞRETMEN PANELİ (Arama, Çıkış ve Kapsül Sayaçlar)
+// ÖĞRETMEN PANELİ
 app.get('/panel', async (req, res) => {
   const ogrenciler = await pool.query('SELECT * FROM ogrenciler ORDER BY ad_soyad ASC');
   let htmlIn = ''; let htmlOut = ''; let countIn = 0; let countOut = 0;
   
   ogrenciler.rows.forEach(o => {
-      // SAAT DİLİMİ BURADA EKLENDİ
       const zaman = o.son_islem_saati ? new Date(o.son_islem_saati).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit', timeZone: 'Europe/Istanbul'}) : '--:--';
       const foto = o.profil_resmi_url ? '/uploads/' + o.profil_resmi_url : 'https://via.placeholder.com/70';
       const kart = `<div class="card" data-isim="${o.ad_soyad.toLowerCase()}"><a href="/ogrenci-detay/${o.id}" style="display:flex; align-items:center; gap:15px; flex:1; text-decoration:none; color:inherit;"><img src="${foto}" style="width:70px; height:70px; border-radius:20px; object-fit:cover;"><div><strong>${o.ad_soyad}</strong><br><small>🕒 ${zaman}</small></div></a><button onclick="tg(${o.id})" class="btn-s ${o.su_an_okulda ? 'btn-in' : 'btn-out'}">${o.su_an_okulda ? 'Çıkış' : 'Giriş'}</button></div>`;
@@ -148,6 +150,8 @@ app.get('/panel', async (req, res) => {
       .btn-s { padding: 10px 18px; border-radius: 12px; border: none; color: white; font-weight: bold; cursor: pointer; }
       .btn-in { background: #FF6B6B; } .btn-out { background: #4ECDC4; }
       .btn-logout { padding: 12px 20px; border-radius: 15px; background: #fff1f1; color: #ff4757; text-decoration: none; font-weight: 700; border: 1px solid #ffe3e3; }
+      .btn-report { padding: 12px 25px; border-radius: 15px; background: #4A90E2; color: white; text-decoration: none; font-weight: 700; box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2); transition: 0.3s; }
+      .btn-report:hover { background: #357ABD; transform: scale(1.02); }
       .divider-wrap { position: relative; margin: 50px auto 30px auto; max-width: 1200px; display: flex; justify-content: center; align-items: center; }
       .soft-line { position: absolute; width: 100%; height: 2px; background: linear-gradient(90deg, rgba(253,251,249,0) 0%, rgba(226,232,240,1) 50%, rgba(253,251,249,0) 100%); z-index: 1; }
       .capsule { position: relative; z-index: 2; background: white; padding: 10px 25px; border-radius: 50px; display: inline-flex; align-items: center; gap: 12px; border: 1px solid #f1f5f9; box-shadow: 0 10px 25px rgba(0,0,0,0.03); font-weight: 700; color: #475569; }
@@ -158,7 +162,11 @@ app.get('/panel', async (req, res) => {
       <div class="top-bar">
         <h2>Öğrenci Yönetimi</h2>
         <input type="text" id="arama" class="search-box" placeholder="🔍 Öğrenci Ara..." onkeyup="ogrenciAra()">
-        <div style="display:flex; gap:10px;"><a href="/yeni-ogrenci" style="padding:12px 25px; border-radius:15px; background:#FF6B6B; color:white; text-decoration:none; font-weight:700;">+ Yeni Öğrenci</a><a href="/" class="btn-logout">Sistemden Çıkış</a></div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <a href="/yeni-ogrenci" style="padding:12px 25px; border-radius:15px; background:#FF6B6B; color:white; text-decoration:none; font-weight:700;">+ Yeni Öğrenci</a>
+          <a href="/gunluk-rapor" class="btn-report">📊 Günlük Rapor</a>
+          <a href="/" class="btn-logout">Sistemden Çıkış</a>
+        </div>
       </div>
       <div class="divider-wrap"><div class="soft-line"></div><div class="capsule"><span>🟢 Şu An Sınıfta Olanlar</span><div class="badge b-green">${countIn}</div></div></div>
       <div class="grid">${htmlIn}</div>
@@ -185,22 +193,75 @@ app.get('/yeni-ogrenci', (req, res) => {
           function validateTC(input) { input.value = input.value.replace(/[^0-9]/g, '').substring(0, 11); }
         </script></head>
         <body><div class="f-card"><h2>✨ Yeni Kayıt</h2><form action="/ogrenci-ekle" method="POST" enctype="multipart/form-data">
-        <div class="section-t">Kimlik Bilgileri</div><input type="text" name="ad" placeholder="Ad Soyad" required><input type="text" name="tc" placeholder="TC Kimlik No (11 Hane)" oninput="validateTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
+        <div class="section-t">Kimlik ve Ücret Bilgileri</div>
+        <input type="text" name="ad" placeholder="Ad Soyad" required>
+        <input type="text" name="tc" placeholder="TC Kimlik No (11 Hane)" oninput="validateTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
+        <input type="number" name="ucret" placeholder="Saatlik Ücret (TL)" required>
         <select name="kan"><option value="">Kan Grubu Seçin</option><option value="A Rh+">A Rh+</option><option value="A Rh-">A Rh-</option><option value="B Rh+">B Rh+</option><option value="B Rh-">B Rh-</option><option value="AB Rh+">AB Rh+</option><option value="AB Rh-">AB Rh-</option><option value="0 Rh+">0 Rh+</option><option value="0 Rh-">0 Rh-</option></select>
         <div class="section-t">Veli İletişim</div><input type="text" name="v1" placeholder="1. Veli Ad Soyad" required><input type="text" name="v1t" placeholder="1. Veli Tel (05xx...)" oninput="formatPhone(this)" required><input type="text" name="v2" placeholder="2. Veli (Yedek) Ad Soyad"><input type="text" name="v2t" placeholder="2. Veli Tel" oninput="formatPhone(this)">
-        <div class="section-t">Sağlık & Fotoğraf</div><textarea name="ilac" placeholder="Kullanılan İlaçlar" rows="2"></textarea><textarea name="ozel" placeholder="Özel Durum (Astım vb.)" rows="2"></textarea><input type="file" name="foto" accept="image/*" required>
+        <div class="section-t">Sağlık & Fotoğraf</div><textarea name="ilac" placeholder="Kullanılan İlaçlar" rows="2"></textarea><textarea name="ozel" placeholder="*" rows="2"></textarea><input type="file" name="foto" accept="image/*" required>
         <button type="submit" class="kaydet-btn">Kaydı Tamamla</button><a href="/panel" style="display:block; text-align:center; margin-top:20px; color:#aaa; text-decoration:none; font-size:14px;">Vazgeç</a></form></div></body></html>
     `);
 });
 
+// ÖĞRENCİ EKLE
 app.post('/ogrenci-ekle', upload.single('foto'), async (req, res) => {
-    const { ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel } = req.body;
-    await pool.query(`INSERT INTO ogrenciler (ad_soyad, tc_no, kan_grubu, veli_ad_soyad, veli_tel, yedek_veli_ad_soyad, yedek_veli_tel, ilaclar, ozel_durum, profil_resmi_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, 
-    [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, req.file ? req.file.filename : null]);
+    const { ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, ucret } = req.body;
+    await pool.query(`INSERT INTO ogrenciler (ad_soyad, tc_no, kan_grubu, veli_ad_soyad, veli_tel, yedek_veli_ad_soyad, yedek_veli_tel, ilaclar, ozel_durum, profil_resmi_url, saatlik_ucret) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, 
+    [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, req.file ? req.file.filename : null, ucret || 0]);
     res.redirect('/panel'); 
 });
 
-// ÖĞRENCİ DETAY (Bölünmüş Ekran, Scrollbar ve Süre Hesaplama)
+// YENİ: ÖĞRENCİ DÜZENLEME SAYFASI (Aynı Yeni Kayıt Ekranı Tasarımında)
+app.get('/ogrenci-duzenle/:id', async (req, res) => {
+    const s = await pool.query('SELECT * FROM ogrenciler WHERE id = $1', [req.params.id]);
+    if(s.rows.length === 0) return res.send("Öğrenci bulunamadı.");
+    const o = s.rows[0];
+    
+    res.send(`
+        <html><head><link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+        <style>body{font-family:'Quicksand',sans-serif; background:#fdfbf9; padding:40px; display:flex; justify-content:center; align-items:flex-start; min-height:100vh;}
+        .f-card{background:white; padding:40px; border-radius:40px; box-shadow:0 15px 45px rgba(0,0,0,0.05); width:550px; box-sizing: border-box; margin-bottom: 40px;}
+        input, textarea, select { width:100%; padding:14px; margin-bottom:15px; border-radius:12px; border:2px solid #f1f5f9; outline:none; font-family:inherit; box-sizing: border-box; display: block;}
+        .section-t { font-size: 13px; color: #94a3b8; text-transform: uppercase; margin: 10px 0 15px 0; font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        button.kaydet-btn {width:100%; padding:18px; background:#4ECDC4; color:white; border:none; border-radius:18px; cursor:pointer; font-weight:bold; font-size: 16px; transition: 0.3s;}</style>
+        <script>
+          function formatPhone(input) { let v = input.value.replace(/[^0-9]/g, '').substring(0, 11); if (v.length > 0 && v[0] !== '0') v = '0' + v; let f = ''; for(let i=0; i<v.length; i++) { if(i===4 || i===7 || i===9) f += ' '; f += v[i]; } input.value = f.trim(); }
+          function validateTC(input) { input.value = input.value.replace(/[^0-9]/g, '').substring(0, 11); }
+        </script></head>
+        <body><div class="f-card"><h2>✏️ Öğrenci Düzenle</h2><form action="/ogrenci-guncelle/${o.id}" method="POST" enctype="multipart/form-data">
+        <div class="section-t">Kimlik ve Ücret Bilgileri</div>
+        <input type="text" name="ad" value="${o.ad_soyad}" placeholder="Ad Soyad" required>
+        <input type="text" name="tc" value="${o.tc_no || ''}" placeholder="TC Kimlik No (11 Hane)" oninput="validateTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
+        <input type="number" name="ucret" value="${o.saatlik_ucret || 0}" placeholder="Saatlik Ücret (TL)" required>
+        <select name="kan">
+            <option value="">Kan Grubu Seçin</option>
+            <option value="A Rh+" ${o.kan_grubu==='A Rh+'?'selected':''}>A Rh+</option>
+            <option value="A Rh-" ${o.kan_grubu==='A Rh-'?'selected':''}>A Rh-</option>
+            <option value="B Rh+" ${o.kan_grubu==='B Rh+'?'selected':''}>B Rh+</option>
+            <option value="B Rh-" ${o.kan_grubu==='B Rh-'?'selected':''}>B Rh-</option>
+            <option value="AB Rh+" ${o.kan_grubu==='AB Rh+'?'selected':''}>AB Rh+</option>
+            <option value="AB Rh-" ${o.kan_grubu==='AB Rh-'?'selected':''}>AB Rh-</option>
+            <option value="0 Rh+" ${o.kan_grubu==='0 Rh+'?'selected':''}>0 Rh+</option>
+            <option value="0 Rh-" ${o.kan_grubu==='0 Rh-'?'selected':''}>0 Rh-</option>
+        </select>
+        <div class="section-t">Veli İletişim</div>
+        <input type="text" name="v1" value="${o.veli_ad_soyad || ''}" placeholder="1. Veli Ad Soyad" required>
+        <input type="text" name="v1t" value="${o.veli_tel || ''}" placeholder="1. Veli Tel (05xx...)" oninput="formatPhone(this)" required>
+        <input type="text" name="v2" value="${o.yedek_veli_ad_soyad || ''}" placeholder="2. Veli (Yedek) Ad Soyad">
+        <input type="text" name="v2t" value="${o.yedek_veli_tel || ''}" placeholder="2. Veli Tel" oninput="formatPhone(this)">
+        <div class="section-t">Sağlık & Fotoğraf</div>
+        <textarea name="ilac" placeholder="Kullanılan İlaçlar" rows="2">${o.ilaclar || ''}</textarea>
+        <textarea name="ozel" placeholder="Özel Durum (Astım vb.)" rows="2">${o.ozel_durum || ''}</textarea>
+        <p style="font-size:12px; color:#666; margin-top:0;">* Fotoğrafı değiştirmek istemiyorsanız boş bırakın.</p>
+        <input type="file" name="foto" accept="image/*">
+        <button type="submit" class="kaydet-btn">Güncellemeyi Kaydet</button>
+        <a href="/ogrenci-detay/${o.id}" style="display:block; text-align:center; margin-top:20px; color:#aaa; text-decoration:none; font-size:14px;">Vazgeç</a>
+        </form></div></body></html>
+    `);
+});
+
+// ÖĞRENCİ DETAY (Modal kaldırıldı, düzenle butonu yeni sayfaya yönlendiriyor)
 app.get('/ogrenci-detay/:id', async (req, res) => {
   const s = await pool.query('SELECT * FROM ogrenciler WHERE id = $1', [req.params.id]);
   const l = await pool.query('SELECT * FROM hareket_kayitlari WHERE ogrenci_id = $1 ORDER BY tarih DESC, id DESC', [req.params.id]);
@@ -221,7 +282,6 @@ app.get('/ogrenci-detay/:id', async (req, res) => {
           const saatFarki = Math.floor(toplamDk / 60); const dkFarki = toplamDk % 60;
           if (saatFarki > 0 && dkFarki > 0) sure = `${saatFarki} sa ${dkFarki} dk`; else if (saatFarki > 0) sure = `${saatFarki} sa`; else sure = `${dkFarki} dk`;
       }
-      // SAAT DİLİMİ BURADA EKLENDİ
       tabloHTML += `<tr><td>${new Date(x.tarih).toLocaleDateString('tr-TR', {timeZone: 'Europe/Istanbul'})}</td><td>${g}</td><td>${c}</td><td><strong>${sure}</strong></td></tr>`;
   });
   const resim = o.profil_resmi_url ? '/uploads/' + o.profil_resmi_url : 'https://via.placeholder.com/180';
@@ -241,14 +301,8 @@ app.get('/ogrenci-detay/:id', async (req, res) => {
       .b{background:#f8fafc; padding:20px; border-radius:20px; border:1px solid #eee;}
       .health{background:#fffbeb; border:1px solid #fef3c7;}
       table{width:100%; border-collapse:collapse;} th,td{padding:12px; border-bottom:1px solid #eee; text-align:left;}
-      .btn-edit { width: 100%; padding: 15px; background: #fdfbf9; color: #4ECDC4; border: 2px solid #4ECDC4; border-radius: 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+      .btn-edit { display: block; box-sizing: border-box; text-align: center; text-decoration: none; width: 100%; padding: 15px; background: #fdfbf9; color: #4ECDC4; border: 2px solid #4ECDC4; border-radius: 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
       .btn-del { width: 100%; padding: 15px; background: #fff1f1; color: #ff4757; border: 2px solid #ff4757; border-radius: 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-      .modal-bg { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: flex-start; overflow-y: auto; padding: 40px 0; }
-      .f-card { background: white; padding: 40px; border-radius: 40px; width: 550px; margin: auto; box-sizing: border-box; }
-      .section-t { font-size: 13px; color: #94a3b8; text-transform: uppercase; margin: 10px 0 15px 0; font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-      .f-card input, .f-card textarea, .f-card select { width: 100%; padding: 14px; margin-bottom: 15px; border-radius: 12px; border: 2px solid #f1f5f9; outline: none; font-family: inherit; box-sizing: border-box; display: block; }
-      .kaydet-btn { width: 100%; padding: 18px; background: #4ECDC4; color: white; border: none; border-radius: 18px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top:10px; }
-      .iptal-btn { width: 100%; padding: 15px; background: none; color: #aaa; border: none; cursor: pointer; font-weight: bold; margin-top: 5px; }
     </style></head>
     <body>
       <div style="max-width:1100px; margin: 0 auto 20px auto;"><a href="/panel" style="color:#1E90FF; text-decoration:none; font-weight:bold;">← Panele Dön</a></div>
@@ -257,22 +311,18 @@ app.get('/ogrenci-detay/:id', async (req, res) => {
           <div class="h">
             <div class="dz" onclick="document.getElementById('fi').click()"><img src="${resim}"></div>
             <input type="file" id="fi" style="display:none" onchange="up(this.files[0],${o.id})">
-            <div><h1 style="margin:0 0 10px 0;">${o.ad_soyad}</h1><p style="margin:5px 0;">TC: ${o.tc_no || '-'}</p><p style="margin:5px 0;">Kan: ${o.kan_grubu || '-'}</p></div>
+            <div><h1 style="margin:0 0 10px 0;">${o.ad_soyad}</h1><p style="margin:5px 0;">TC: ${o.tc_no || '-'}</p><p style="margin:5px 0;">Kan: ${o.kan_grubu || '-'}</p><p style="margin:5px 0; color:#4ECDC4; font-weight:bold;">Saatlik Ücret: ${o.saatlik_ucret || 0} TL</p></div>
           </div>
           <div class="grid-2"><div class="b"><h3>Veli 1</h3><p>${o.veli_ad_soyad || '-'}</p><p>${o.veli_tel || '-'}</p></div><div class="b"><h3>Veli 2 (Yedek)</h3><p>${o.yedek_veli_ad_soyad || '-'}</p><p>${o.yedek_veli_tel || '-'}</p></div></div>
           <div class="b health"><h3>💊 Sağlık Notları</h3><p>İlaçlar: ${o.ilaclar || 'Yok'}</p><p>Durum: ${o.ozel_durum || 'Yok'}</p></div>
-          <div class="grid-2" style="margin-top: 10px;"><button class="btn-edit" onclick="document.getElementById('editModal').style.display='flex'">✏️ Düzenle</button><button class="btn-del" onclick="sil(${o.id})">🗑️ Sil</button></div>
+          <div class="grid-2" style="margin-top: 10px;">
+            <a href="/ogrenci-duzenle/${o.id}" class="btn-edit">✏️ Düzenle</a>
+            <button class="btn-del" onclick="sil(${o.id})">🗑️ Sil</button>
+          </div>
         </div>
         <div class="right-panel"><h3 style="margin-top:0;">📅 Hareket Kayıtları</h3><div class="scroll-box"><table><thead style="position: sticky; top: 0; background: white;"><tr><th>Tarih</th><th>Giriş</th><th>Çıkış</th><th>Süre</th></tr></thead><tbody>${tabloHTML}</tbody></table></div></div>
       </div>
-      <div id="editModal" class="modal-bg"><div class="f-card"><h2>✏️ Düzenle</h2><form action="/ogrenci-guncelle/${o.id}" method="POST" enctype="multipart/form-data">
-      <div class="section-t">Kimlik</div><input type="text" name="ad" value="${o.ad_soyad}" required><input type="text" name="tc" value="${o.tc_no || ''}" oninput="valTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
-      <select name="kan"><option value="">Kan Grubu</option><option value="A Rh+" ${o.kan_grubu==='A Rh+'?'selected':''}>A Rh+</option><option value="B Rh+" ${o.kan_grubu==='B Rh+'?'selected':''}>B Rh+</option><option value="AB Rh+" ${o.kan_grubu==='AB Rh+'?'selected':''}>AB Rh+</option><option value="0 Rh+" ${o.kan_grubu==='0 Rh+'?'selected':''}>0 Rh+</option></select>
-      <div class="section-t">Veli</div><input type="text" name="v1" value="${o.veli_ad_soyad || ''}" required><input type="text" name="v1t" value="${o.veli_tel || ''}" oninput="fmtPh(this)" required><input type="text" name="v2" value="${o.yedek_veli_ad_soyad || ''}"><input type="text" name="v2t" value="${o.yedek_veli_tel || ''}" oninput="fmtPh(this)">
-      <div class="section-t">Sağlık</div><textarea name="ilac" rows="2">${o.ilaclar || ''}</textarea><textarea name="ozel" rows="2">${o.ozel_durum || ''}</textarea><input type="file" name="foto" accept="image/*"><button type="submit" class="kaydet-btn">Kaydet</button><button type="button" class="iptal-btn" onclick="document.getElementById('editModal').style.display='none'">İptal</button></form></div></div>
       <script>
-        function fmtPh(i) { let v = i.value.replace(/[^0-9]/g, '').substring(0, 11); if (v.length > 0 && v[0] !== '0') v = '0' + v; let f = ''; for(let j=0; j<v.length; j++) { if(j===4 || j===7 || j===9) f += ' '; f += v[j]; } i.value = f.trim(); }
-        function valTC(i) { i.value = i.value.replace(/[^0-9]/g, '').substring(0, 11); }
         function up(f,id) { const fd = new FormData(); fd.append('foto',f); fetch('/upload-photo/'+id, {method:'POST', body:fd}).then(() => location.reload()); }
         function sil(id) { if(confirm("Bu öğrenciyi silmek istediğinizden emin misiniz?")) { fetch('/ogrenci-sil/'+id, {method:'DELETE'}).then(() => location.href='/panel'); } }
       </script></body></html>
@@ -281,12 +331,12 @@ app.get('/ogrenci-detay/:id', async (req, res) => {
 
 // ÖĞRENCİ GÜNCELLEME, SİLME VE DURUM ROTALARI
 app.post('/ogrenci-guncelle/:id', upload.single('foto'), async (req, res) => {
-    const { ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel } = req.body;
+    const { ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, ucret } = req.body;
     const id = req.params.id;
     if (req.file) {
-        await pool.query(`UPDATE ogrenciler SET ad_soyad=$1, tc_no=$2, kan_grubu=$3, veli_ad_soyad=$4, veli_tel=$5, yedek_veli_ad_soyad=$6, yedek_veli_tel=$7, ilaclar=$8, ozel_durum=$9, profil_resmi_url=$10 WHERE id=$11`, [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, req.file.filename, id]);
+        await pool.query(`UPDATE ogrenciler SET ad_soyad=$1, tc_no=$2, kan_grubu=$3, veli_ad_soyad=$4, veli_tel=$5, yedek_veli_ad_soyad=$6, yedek_veli_tel=$7, ilaclar=$8, ozel_durum=$9, profil_resmi_url=$10, saatlik_ucret=$11 WHERE id=$12`, [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, req.file.filename, ucret || 0, id]);
     } else {
-        await pool.query(`UPDATE ogrenciler SET ad_soyad=$1, tc_no=$2, kan_grubu=$3, veli_ad_soyad=$4, veli_tel=$5, yedek_veli_ad_soyad=$6, yedek_veli_tel=$7, ilaclar=$8, ozel_durum=$9 WHERE id=$10`, [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, id]);
+        await pool.query(`UPDATE ogrenciler SET ad_soyad=$1, tc_no=$2, kan_grubu=$3, veli_ad_soyad=$4, veli_tel=$5, yedek_veli_ad_soyad=$6, yedek_veli_tel=$7, ilaclar=$8, ozel_durum=$9, saatlik_ucret=$10 WHERE id=$11`, [ad, tc, kan, v1, v1t, v2, v2t, ilac, ozel, ucret || 0, id]);
     }
     res.redirect('/ogrenci-detay/' + id); 
 });
@@ -297,19 +347,15 @@ app.post('/durum-degistir/:id', async (req, res) => {
   const r = await pool.query('SELECT su_an_okulda FROM ogrenciler WHERE id = $1', [req.params.id]);
   const yeni = !r.rows[0].su_an_okulda;
   
-  // 1. Türkiye saat ve tarihini JS tarafında oluşturuyoruz
   const options = { timeZone: 'Europe/Istanbul' };
   const trDateObj = new Date(new Date().toLocaleString('en-US', options));
   
-  const trSaat = trDateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); // "HH:mm"
-  const trTarih = trDateObj.toLocaleDateString('en-CA'); // "YYYY-MM-DD"
+  const trSaat = trDateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); 
+  const trTarih = trDateObj.toLocaleDateString('en-CA'); 
 
-  // 2. Ogrenciler tablosunda son_islem_saati'ne direkt bu TR objesini gönderiyoruz
-  // Böylece SQL'in kendi saat dilimiyle uğraşmasına gerek kalmıyor.
   await pool.query('UPDATE ogrenciler SET su_an_okulda = $1, son_islem_saati = $2 WHERE id = $3', 
     [yeni, trDateObj, req.params.id]);
   
-  // 3. Hareket kayıtlarını işle
   if (yeni) {
       await pool.query('INSERT INTO hareket_kayitlari (ogrenci_id, tarih, giris_saati) VALUES ($1, $2, $3)', 
       [req.params.id, trTarih, trSaat]);
@@ -319,9 +365,90 @@ app.post('/durum-degistir/:id', async (req, res) => {
   }
   res.json({ success: true });
 });
+
 app.post('/upload-photo/:id', upload.single('foto'), async (req, res) => {
     await pool.query('UPDATE ogrenciler SET profil_resmi_url = $1 WHERE id = $2', [req.file.filename, req.params.id]);
     res.json({ success: true });
+});
+
+// --- EXCEL RAPOR ROTASI ---
+app.get('/gunluk-rapor', async (req, res) => {
+  try {
+    const trTarih = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+    const dosyaTarih = new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }).replace(/\./g, '-');
+    
+    const result = await pool.query(`
+      SELECT o.ad_soyad, o.saatlik_ucret, h.giris_saati, h.cikis_saati 
+      FROM hareket_kayitlari h 
+      JOIN ogrenciler o ON h.ogrenci_id = o.id 
+      WHERE h.tarih = $1 
+      ORDER BY o.ad_soyad ASC, h.giris_saati ASC
+    `, [trTarih]);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Günlük Hareketler');
+
+    worksheet.columns = [
+      { header: 'Öğrenci Ad Soyad', key: 'ad', width: 30 },
+      { header: 'Hareket Detayları (Giriş - Çıkış)', key: 'detay', width: 40 },
+      { header: 'Toplam Süre', key: 'toplam', width: 20 },
+      { header: 'Kazanım (TL)', key: 'ucret', width: 15 }
+    ];
+
+    const ogrenciRaporu = {};
+
+    result.rows.forEach(row => {
+      if (!ogrenciRaporu[row.ad_soyad]) {
+        ogrenciRaporu[row.ad_soyad] = { hareketler: [], toplamDakika: 0, saatlik: row.saatlik_ucret || 0 };
+      }
+
+      const giris = row.giris_saati;
+      const cikis = row.cikis_saati || '--:--';
+      ogrenciRaporu[row.ad_soyad].hareketler.push(`${giris} - ${cikis}`);
+
+      if (giris && row.cikis_saati) {
+        const [gS, gD] = giris.split(':').map(Number);
+        const [cS, cD] = cikis.split(':').map(Number);
+        let fark = (cS * 60 + cD) - (gS * 60 + gD);
+        if (fark < 0) fark += 1440;
+        ogrenciRaporu[row.ad_soyad].toplamDakika += fark;
+      }
+    });
+
+    let toplamCiro = 0;
+
+    Object.keys(ogrenciRaporu).forEach(ad => {
+      const data = ogrenciRaporu[ad];
+      const saat = Math.floor(data.toplamDakika / 60);
+      const dakika = data.toplamDakika % 60;
+      const sureMetni = `${saat > 0 ? saat + ' sa ' : ''}${dakika} dk`;
+
+      const ucretHesabi = (data.toplamDakika / 60) * data.saatlik;
+      toplamCiro += ucretHesabi;
+
+      worksheet.addRow({
+        ad: ad,
+        detay: data.hareketler.join(' / '),
+        toplam: data.toplamDakika > 0 ? sureMetni : '--',
+        ucret: data.toplamDakika > 0 ? ucretHesabi.toFixed(2) + ' ₺' : '0.00 ₺'
+      });
+    });
+
+    worksheet.addRow({});
+    const ciroSatiri = worksheet.addRow({ ad: '', detay: '', toplam: 'TOPLAM CİRO:', ucret: toplamCiro.toFixed(2) + ' ₺' });
+    ciroSatiri.font = { bold: true };
+    worksheet.getRow(1).font = { bold: true };
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${dosyaTarih}OgrenciHareketi.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Rapor oluşturulurken bir hata oluştu.");
+  }
 });
 
 app.listen(port, () => console.log(`🚀 Sunucu: http://localhost:${port}`));
