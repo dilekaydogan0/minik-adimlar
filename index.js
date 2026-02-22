@@ -205,10 +205,10 @@ app.get('/yeni-ogrenci', (req, res) => {
         <div class="section-t">Kimlik ve Ücret Bilgileri</div>
         <input type="text" name="ad" placeholder="Ad Soyad" required>
         <input type="text" name="tc" placeholder="TC Kimlik No (11 Hane)" oninput="validateTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
-        <input type="number" name="ucret" placeholder="Saatlik Ücret (TL)" required>
+        <input type="number" name="ucret" placeholder="Saatlik Ücret (TL)">
         <select name="kan"><option value="">Kan Grubu Seçin</option><option value="A Rh+">A Rh+</option><option value="A Rh-">A Rh-</option><option value="B Rh+">B Rh+</option><option value="B Rh-">B Rh-</option><option value="AB Rh+">AB Rh+</option><option value="AB Rh-">AB Rh-</option><option value="0 Rh+">0 Rh+</option><option value="0 Rh-">0 Rh-</option></select>
         <div class="section-t">Veli İletişim</div><input type="text" name="v1" placeholder="1. Veli Ad Soyad" required><input type="text" name="v1t" placeholder="1. Veli Tel (05xx...)" oninput="formatPhone(this)" required><input type="text" name="v2" placeholder="2. Veli (Yedek) Ad Soyad"><input type="text" name="v2t" placeholder="2. Veli Tel" oninput="formatPhone(this)">
-        <div class="section-t">Sağlık & Fotoğraf</div><textarea name="ilac" placeholder="Kullanılan İlaçlar" rows="2"></textarea><textarea name="ozel" placeholder="Özel Durum (Astım vb.)" rows="2"></textarea><input type="file" name="foto" accept="image/*" required>
+        <div class="section-t">Sağlık & Fotoğraf</div><textarea name="ilac" placeholder="Kullanılan İlaçlar" rows="2"></textarea><textarea name="ozel" placeholder="Özel Durum (Astım vb.)" rows="2"></textarea><input type="file" name="foto" accept="image/*">
         <button type="submit" class="kaydet-btn">Kaydı Tamamla</button><a href="/panel" style="display:block; text-align:center; margin-top:20px; color:#aaa; text-decoration:none; font-size:14px;">Vazgeç</a></form></div></body></html>
     `);
 });
@@ -242,7 +242,7 @@ app.get('/ogrenci-duzenle/:id', async (req, res) => {
         <div class="section-t">Kimlik ve Ücret Bilgileri</div>
         <input type="text" name="ad" value="${o.ad_soyad}" placeholder="Ad Soyad" required>
         <input type="text" name="tc" value="${o.tc_no || ''}" placeholder="TC Kimlik No (11 Hane)" oninput="validateTC(this)" minlength="11" maxlength="11" pattern=".{11}" required>
-        <input type="number" name="ucret" value="${o.saatlik_ucret || 0}" placeholder="Saatlik Ücret (TL)" required>
+        <input type="number" name="ucret" value="${o.saatlik_ucret || 0}" placeholder="Saatlik Ücret (TL)">
         <select name="kan">
             <option value="">Kan Grubu Seçin</option>
             <option value="A Rh+" ${o.kan_grubu==='A Rh+'?'selected':''}>A Rh+</option>
