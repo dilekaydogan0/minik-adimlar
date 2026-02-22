@@ -85,7 +85,7 @@ app.get('/', (req, res) => {
         </div>
         <div class="wave-bottom"></div>
         <script>
-          const resimler = ['https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=800','https://images.unsplash.com/photo-1540479859555-17af45c78602?w=800','https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800','https://images.unsplash.com/photo-1564424555153-04228f0aa7ee?w=800'];
+          const resimler = ['https://images.unsplash.com/photo-1587654780291-39c9404d746b?w=800','https://images.unsplash.com/photo-1540479859555-17af45c78602?w=800','https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800'];
           let sira = 0;
           function ciz() {
             const g = document.getElementById('galeri'); g.innerHTML = '';
