@@ -1,0 +1,10 @@
+name: Ping Render
+on:
+  schedule:
+    - cron: '*/14 7-16 * * *'
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Siteyi Uyanik Tut
+        run: curl https://minik-adimlar.onrender.com
