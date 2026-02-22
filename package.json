@@ -12,10 +12,12 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "cloudinary": "^1.41.3",
     "dotenv": "^17.2.4",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^4.0.0",
     "pg": "^8.18.0"
   }
 }
